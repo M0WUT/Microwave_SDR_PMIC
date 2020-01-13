@@ -85,22 +85,12 @@ wire[7:0] w_i2cRxData;
 
 i2c_handler i2c_inst1(
 	.i_clk(clk),
-	.i_begin(1'b1), // DEBUG: continually transmit
+	.i_begin(r), // DEBUG: continually transmit
 	.i_writeEnable(1'b0),  // DEBUG: always read to minimise risk of bork
 	.i_i2cAddress(7'h12),
 	.i2c_scl(i2c_scl),
 	.i2c_sda(i2c_sda)
 );
-
-reg[15:0] r_counter = 0;
-always @(posedge clk) begin
-	r_counter <= r_counter + 1;
-	if(r_counter == 16'hFFFF) begin
-		r_i2cReadBegin <= 1'b1;
-	end else begin
-		r_uartTxBegin <= 1'b0;
-	end
-end
 
 /////////////
 // Stage 1 //

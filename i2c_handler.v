@@ -1,14 +1,16 @@
+`default_nettype none
 module i2c_handler(
-	input i_clk,
-	input i_begin,
-	input i_writeEnable,
-	input [6:0] i_i2cAddress,
-	input [7:0] i_regAddress,
-	input [7:0] i_txData,
-	inout i2c_scl,
-	inout i2c_sda
+	input wire i_clk,
+	input wire i_begin,
+	input wire i_writeEnable,
+	input wire [6:0] i_i2cAddress,
+	input wire [7:0] i_regAddress,
+	input wire [7:0] i_txData,
+	inout wire i2c_scl,
+	inout wire i2c_sda,
+	output wire [3:0] o_state,  // DEBUG
+	output wire [1:0] o_wbState  // DEBUG
 );
-
 parameter I2C_BASE_ADDRESS = 8'h40; // Base address of I2C registers
 localparam CONTROL_REG_OFFSET = 0;
 localparam COMMAND_REG_OFFSET = 1;
@@ -30,6 +32,8 @@ reg r_i2cWriteEnable = 0;
 reg[7:0] r_i2cRegAddress = 0;
 reg [7:0] r_i2cTxData = 0;
 
+wire w_wbDone;
+
 wishbone_handler wishbone_inst1(
 	.i_clk(i_clk),
 	.i_begin(r_wbBegin),
@@ -39,16 +43,20 @@ wishbone_handler wishbone_inst1(
 	.i_writeData(r_wbTxData),
 	.o_readData(w_wbRxData),
 	.i2c_scl(i2c_scl),
-	.i2c_sda(i2c_sda)
+	.i2c_sda(i2c_sda),
+	.o_state(o_wbState) // DEBUG
 );
 
-reg [3:0] r_state = 0;
+
 localparam s_START = 0;
 localparam s_INIT = 1;
 localparam s_IDLE = 2;
 localparam s_SENDING_SLAVE_ADDRESS = 3;
 localparam s_SENDING_TX_COMMAND = 4;
 localparam s_DONE = 5;
+reg [3:0] r_state = s_START;
+
+assign o_state = r_state; // DEBUG
 
 always @(posedge i_clk) begin
 	case (r_state)
@@ -66,7 +74,6 @@ always @(posedge i_clk) begin
 			r_wbBegin <= 1'b0;
 			r_wbWriteEnable <= 1'b0;
 			if (w_wbDone) begin
-
 				r_state <= s_IDLE;
 			end else begin
 				r_state <= s_INIT;
@@ -75,8 +82,6 @@ always @(posedge i_clk) begin
 		
 		s_IDLE:
 		begin
-			r_wbBegin <= 1'b0;
-			r_wbWriteEnable <= 1'b0;
 			if(i_begin) begin
 				// Copy all data into local registers
 				r_i2cRegAddress <= i_regAddress;
@@ -92,6 +97,8 @@ always @(posedge i_clk) begin
 				r_state <= s_SENDING_SLAVE_ADDRESS;
 			end else begin
 				r_state <= s_IDLE;
+				r_wbBegin <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
 			end
 		end  // case s_IDLE
 		
@@ -105,10 +112,15 @@ always @(posedge i_clk) begin
 				r_wbTxData <= 8'h94; // Write with Start condition
 				r_wbWriteEnable <= 1'b1;
 				r_wbBegin <= 1'b1;
-				r_state <= s_IDLE;
+				r_state <= s_DONE;
 			end else begin
 				r_state <= s_SENDING_SLAVE_ADDRESS;
 			end
+		end
+		
+		s_DONE:
+		begin
+			r_state <= s_IDLE;
 		end
 	endcase
 	
