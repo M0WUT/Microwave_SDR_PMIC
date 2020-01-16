@@ -8,8 +8,7 @@ module i2c_handler(
 	input wire [7:0] i_txData,
 	inout wire i2c_scl,
 	inout wire i2c_sda,
-	output wire [3:0] o_state,  // DEBUG
-	output wire [1:0] o_wbState  // DEBUG
+	output reg o_done
 );
 parameter I2C_BASE_ADDRESS = 8'h40; // Base address of I2C registers
 localparam CONTROL_REG_OFFSET = 0;
@@ -43,8 +42,7 @@ wishbone_handler wishbone_inst1(
 	.i_writeData(r_wbTxData),
 	.o_readData(w_wbRxData),
 	.i2c_scl(i2c_scl),
-	.i2c_sda(i2c_sda),
-	.o_state(o_wbState) // DEBUG
+	.i2c_sda(i2c_sda)
 );
 
 
@@ -56,12 +54,13 @@ localparam s_SENDING_TX_COMMAND = 4;
 localparam s_DONE = 5;
 reg [3:0] r_state = s_START;
 
-assign o_state = r_state; // DEBUG
+
 
 always @(posedge i_clk) begin
 	case (r_state)
 		s_START:
 		begin
+			o_done <= 0;
 			r_wbAddress <= I2C_BASE_ADDRESS + CONTROL_REG_OFFSET;
 			r_wbTxData <= 8'b10000000;
 			r_wbWriteEnable <= 1'b1;
@@ -71,6 +70,7 @@ always @(posedge i_clk) begin
 		
 		s_INIT:
 		begin
+			o_done <= 0;
 			r_wbBegin <= 1'b0;
 			r_wbWriteEnable <= 1'b0;
 			if (w_wbDone) begin
@@ -82,6 +82,7 @@ always @(posedge i_clk) begin
 		
 		s_IDLE:
 		begin
+			o_done <= 0;
 			if(i_begin) begin
 				// Copy all data into local registers
 				r_i2cRegAddress <= i_regAddress;
@@ -104,6 +105,7 @@ always @(posedge i_clk) begin
 		
 		s_SENDING_SLAVE_ADDRESS:
 		begin
+			o_done <= 0;
 			r_wbBegin <= 1'b0;
 			r_wbWriteEnable <= 1'b0;
 			if(w_wbDone) begin
@@ -120,7 +122,16 @@ always @(posedge i_clk) begin
 		
 		s_DONE:
 		begin
-			r_state <= s_IDLE;
+			o_done <= 0;
+			r_wbBegin <= 1'b0;
+			r_wbWriteEnable <= 1'b0;
+			if(w_wbDone) begin
+				o_done <= 1;
+				r_state <= s_IDLE;
+			end else begin
+				o_done <= 0;
+				r_state <= s_DONE;
+			end
 		end
 	endcase
 	

@@ -80,17 +80,20 @@ uart_tx #(
 
 // I2C Handler
 reg r_i2cReadBegin = 0;
-reg[6:0] r_i2cAddress = 8'h60;
+reg[6:0] r_i2cAddress = 7'h34;
 wire[7:0] w_i2cRxData;
+wire w_i2cDone;
 
 i2c_handler i2c_inst1(
 	.i_clk(clk),
-	.i_begin(r), // DEBUG: continually transmit
+	.i_begin(1'b1), // DEBUG: continually transmit
 	.i_writeEnable(1'b0),  // DEBUG: always read to minimise risk of bork
-	.i_i2cAddress(7'h12),
+	.i_i2cAddress(r_i2cAddress),
 	.i2c_scl(i2c_scl),
-	.i2c_sda(i2c_sda)
+	.i2c_sda(i2c_sda),
+	.o_done(w_i2cDone)
 );
+
 
 /////////////
 // Stage 1 //
