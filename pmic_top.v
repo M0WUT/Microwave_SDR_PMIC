@@ -85,13 +85,15 @@ wire[7:0] w_i2cRxData;
 wire w_i2cDone;
 
 i2c_handler i2c_inst1(
-	.i_clk(clk),
-	.i_begin(1'b1), // DEBUG: continually transmit
-	.i_writeEnable(1'b0),  // DEBUG: always read to minimise risk of bork
-	.i_i2cAddress(r_i2cAddress),
-	.i2c_scl(i2c_scl),
-	.i2c_sda(i2c_sda),
-	.o_done(w_i2cDone)
+	.i_clk(clk),  // Input clock 
+	.i_begin(1'b1),  // Logic high will begin I2C transaction
+	.i_writeEnable(1'b1),  // High to write i_txData to i_regAddress, Low to read from i_regAddress
+	.i_i2cAddress(7'h55),  // 7 bit I2C address of slave
+	.i_regAddress(8'h12),  // Register address within the slave
+	.i_txData(8'h34),  // Data to write to the register, ignored if i_writeEnable is low when i_begin is asserted
+	.i2c_scl(i2c_scl),  // SCL line, pass directly to IO
+	.i2c_sda(i2c_sda),  // SDA line, pass directly to IO
+	.o_done(done)  // Asserted high for 1 cycle of i_clk to indicate the I2C transaction is complete
 );
 
 
