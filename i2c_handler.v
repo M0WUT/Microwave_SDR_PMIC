@@ -10,9 +10,10 @@ module i2c_handler(
 	input wire [6:0] i_i2cAddress,  // 7 bit I2C address of slave
 	input wire [7:0] i_regAddress,  // Register address within the slave
 	input wire [7:0] i_txData,  // Data to write to the register, ignored if i_writeEnable is low when i_begin is asserted
+	output reg [7:0] o_rxData,  // Data received from I2C slave
 	inout wire i2c_scl,  // SCL line, pass directly to IO
 	inout wire i2c_sda,  // SDA line, pass directly to IO
-	output reg o_done  // Asserted high for 1 cycle of i_clk to indicate the I2C transaction is complete
+	output wire o_done  // Asserted high for 1 cycle of i_clk to indicate the I2C transaction is complete
 	//output wire wbEnable,  // DEBUG
 	//input wire i_wbAck
 );
@@ -30,7 +31,6 @@ localparam RX_REG_OFFSET = 7;
 localparam IRQ_REG_OFFSET = 8;
 localparam IRQ_EN_REG_OFFSET = 9;
 
-
 //EFB - module for hard peripherals in MachXO2
 reg r_wbEnable = 0;
 reg r_wbWriteEnable = 0;
@@ -39,7 +39,8 @@ reg [7:0] r_wbTxData = 0;
 wire [7:0] w_wbRxData;
 wire w_wbAck;
 //assign w_wbAck = i_wbAck;  // DEBUG
-//assign wbEnable = r_wbEnable;  // DEBUG
+//assign wbEnable = r_wbEnable;  // DEBUG		
+//assign w_wbRxData = 8'b00010100;  // DEBUG
 
 
 efb efb_inst (
@@ -61,6 +62,7 @@ reg [15:0] r_i2cTxData = 0;
 reg r_i2cWriteEnable = 0;
 wire [7:0] w_i2cRxData;
 reg [1:0] r_i2cTxByteIndex = 0;
+reg[6:0] r_i2cSlaveAddress = 0;
 
 
 localparam s_START = 0;
@@ -74,8 +76,19 @@ localparam s_SENDING_DATA = 7;
 localparam s_TX_STOP = 8;
 localparam s_RX_LOADING_SLAVE_ADDRESS = 9;
 localparam s_RX_SENDING_SLAVE_ADDRESS = 10;	  
+localparam s_CHECKING_SRW = 11;
+localparam s_STARTING_READ = 12;
+localparam s_WAITING = 13;
+localparam s_RX_STOP = 14;
+localparam s_CHECKING_TRRDY_AGAIN = 15;
+localparam s_LOADING_RX_DATA = 16;
+localparam s_WAITING_FOR_STOP = 17;
+localparam s_DONE = 18;
 
-reg[7:0] r_state = s_START;
+
+reg[5:0] r_state = s_START;
+assign o_done = (r_state == s_DONE);
+reg[8:0] r_delayCounter = 0;
 
 always @(posedge i_clk) begin
 	case (r_state)
@@ -91,6 +104,8 @@ always @(posedge i_clk) begin
 		s_INIT: begin
 			// Wait for I2C Core to initialise before accepting transactions
 			if(w_wbAck) begin
+				r_wbEnable <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
 			  	r_state <= s_IDLE;
 			end else begin
 				r_state <= s_INIT;
@@ -101,6 +116,7 @@ always @(posedge i_clk) begin
 			// Idle state, wait for i_begin to be asserted to start transaction
 		  	if(i_begin) begin
 			  	// Copy all inputs to local versions
+				r_i2cSlaveAddress <= i_i2cAddress;
 				r_i2cTxData <= (i_writeEnable ? {i_regAddress , i_txData} : {8'b0, i_regAddress});
 				r_i2cWriteEnable <= i_writeEnable;
 				r_i2cTxByteIndex <= i_writeEnable + 2'd1;  // Send 3 bytes if transmitting (Slave ADDR, Reg ADDR, Data), 2 if reading
@@ -115,7 +131,7 @@ always @(posedge i_clk) begin
 		s_TX_LOADING_SLAVE_ADDRESS: begin
 			// Write first byte (I2C Slave address + R/W bit to I2C TX Reg) over WISHBONE bus
 			r_wbAddress <= (I2C_BASE_ADDRESS + TX_REG_OFFSET);
-			r_wbTxData <= {i_i2cAddress, 1'b0};
+			r_wbTxData <= {r_i2cSlaveAddress, 1'b0};
 			r_wbEnable <= 1'b1;
 			r_wbWriteEnable <= 1'b1;
 
@@ -211,23 +227,8 @@ always @(posedge i_clk) begin
 			if(w_wbAck) begin
 				r_wbEnable <= 1'b0;
 				r_wbWriteEnable <= 1'b0;
-				r_state <= s_IDLE;
-			end else begin
-			  	r_state <= r_state;
-			end
-		end  // case s_TX_STOP
-
-		s_TX_STOP: begin
-		  	// Send next data byte
-			r_wbAddress <= (I2C_BASE_ADDRESS + COMMAND_REG_OFFSET);
-			r_wbTxData <= 8'h44;  // Send STOP condition
-			r_wbEnable <= 1'b1;
-			r_wbWriteEnable <= 1'b1;
-
-			if(w_wbAck) begin
-				r_wbEnable <= 1'b0;
-				r_wbWriteEnable <= 1'b0;
-				r_state <= s_IDLE;
+				r_state <= s_WAITING_FOR_STOP;
+				r_delayCounter <= 400;
 			end else begin
 			  	r_state <= r_state;
 			end
@@ -236,7 +237,7 @@ always @(posedge i_clk) begin
 		s_RX_LOADING_SLAVE_ADDRESS: begin
 			// Write first byte (I2C Slave address + R/W bit to I2C TX Reg) over WISHBONE bus
 			r_wbAddress <= (I2C_BASE_ADDRESS + TX_REG_OFFSET);
-			r_wbTxData <= {i_i2cAddress, 1'b1};  // Slave Address with Read
+			r_wbTxData <= {r_i2cSlaveAddress, 1'b1};  // Slave Address with Read
 			r_wbEnable <= 1'b1;
 			r_wbWriteEnable <= 1'b1;
 
@@ -259,23 +260,120 @@ always @(posedge i_clk) begin
 			if(w_wbAck) begin
 				r_wbEnable <= 1'b0;
 				r_wbWriteEnable <= 1'b0;
-				r_state <= s_IDLE;  // DEBUG
+				r_state <= s_CHECKING_SRW;
 			end else begin
 			  	r_state <= r_state;
 			end
 		end  // case s_RX_SENDING_SLAVE_ADDRESS
 
+		s_CHECKING_SRW: begin
+			// Read Status Registers
+			r_wbAddress <= (I2C_BASE_ADDRESS + STATUS_REG_OFFSET);
+			r_wbEnable <= 1'b1;
+			r_wbWriteEnable <= 1'b0;
 
+			if(w_wbAck) begin
+				r_wbEnable <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
+				if(w_wbRxData[4]) begin  // SRW is asserted, I2C module is ready to read
+					r_state <= s_STARTING_READ;
+				end else begin
+					r_state <= s_CHECKING_SRW; // Recheck SRW
+				end
 
+			end else begin
+				r_state <= r_state;
+			end
+		end  // case s_CHECKING_SRW
 
-		
+		s_STARTING_READ: begin
+			r_wbAddress <= (I2C_BASE_ADDRESS + COMMAND_REG_OFFSET);
+			r_wbTxData <= 8'h24; // Begin Read transaction
+			r_wbEnable <= 1'b1;
+			r_wbWriteEnable <= 1'b1;
 
+			if(w_wbAck) begin
+				r_wbEnable <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
+				r_delayCounter <= 200;
+				r_state <= s_WAITING;
+			end else begin
+			  	r_state <= r_state;
+			end
+		end  // case s_RX_SENDING_SLAVE_ADDRESS
 
+		s_WAITING: begin
+		  	// Need to wait for between 2 and 7 clock cycles.. because datasheet
+			if(r_delayCounter == 0) begin
+			  	r_state <= s_RX_STOP;
+			end else begin
+			  	r_delayCounter <= r_delayCounter - 1;
+			end
+		end  // case s_WAITING
 
+		s_RX_STOP: begin
+			r_wbAddress <= (I2C_BASE_ADDRESS + COMMAND_REG_OFFSET);
+			r_wbTxData <= 8'h6C; // Begin Read transaction
+			r_wbEnable <= 1'b1;
+			r_wbWriteEnable <= 1'b1;
 
+			if(w_wbAck) begin
+				r_wbEnable <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
+				r_state <= s_CHECKING_TRRDY_AGAIN;
+			end else begin
+			  	r_state <= r_state;
+			end
+		end  // case s_RX_STOP
 
+		s_CHECKING_TRRDY_AGAIN: begin
+			// Read Status Registers
+			r_wbAddress <= (I2C_BASE_ADDRESS + STATUS_REG_OFFSET);
+			r_wbEnable <= 1'b1;
+			r_wbWriteEnable <= 1'b0;
 
+			if(w_wbAck) begin
+				r_wbEnable <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
+				if(w_wbRxData[2]) begin  // TRRDY is asserted, I2C write is complete
+					r_state <= s_LOADING_RX_DATA;
+				end else begin
+					r_state <= s_CHECKING_TRRDY_AGAIN; // Recheck TRRDY
+				end
+			end else begin
+				r_state <= r_state;
+			end
+		end  // case s_CHECKING_TRRDY_AGAIN
 
+		s_LOADING_RX_DATA: begin
+			// Read Status Registers
+			r_wbAddress <= (I2C_BASE_ADDRESS + RX_REG_OFFSET);
+			r_wbEnable <= 1'b1;
+			r_wbWriteEnable <= 1'b0;
+
+			if(w_wbAck) begin
+				r_wbEnable <= 1'b0;
+				r_wbWriteEnable <= 1'b0;
+				o_rxData <= w_wbRxData;
+				r_state <= s_WAITING_FOR_STOP;
+				r_delayCounter <= 5;
+			end else begin
+				r_state <= r_state;
+			end
+		end  // case s_CHECKING_TRRDY_AGAIN
+
+		s_WAITING_FOR_STOP: begin
+		  	// Short delay as the STOP condition doesn't appear to send
+			if(r_delayCounter == 0) begin
+			  	r_state <= s_DONE;
+			end else begin
+			  	r_delayCounter <= r_delayCounter - 1;
+			end
+		end
+
+		s_DONE: begin
+		  	r_state <= s_IDLE;
+		end
 	endcase
 end
 

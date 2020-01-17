@@ -15,7 +15,7 @@ module i2c_handler_testbench;
 	i2c_handler dut(
 	.i_clk(clk),  // Input clock 
 	.i_begin(r_begin),  // Logic high will begin I2C transaction
-	.i_writeEnable(r_writeEnable),  // High to write i_txData to i_regAddress, Low to read from i_regAddress
+	.i_writeEnable(1'b0),  // High to write i_txData to i_regAddress, Low to read from i_regAddress
 	.i_i2cAddress(7'h60),  // 7 bit I2C address of slave
 	.i_regAddress(8'h12),  // Register address within the slave
 	.i_txData(8'h34),  // Data to write to the register, ignored if i_writeEnable is low when i_begin is asserted
@@ -48,11 +48,11 @@ module i2c_handler_testbench;
 		r_address = 7'h12;
 		r_data = 8'h34;	  
 		r_begin = 0;
-		r_writeEnable = 1;
+		r_writeEnable = 0;
 		#20
 		r_begin = 1'b1;
 		#1 r_begin = 1'b0;
-		#100
+		#300
 		$finish;
 	end
 	
