@@ -18,6 +18,7 @@ module i2c_handler_testbench;
 	.i_writeEnable(1'b0),  // High to write i_txData to i_regAddress, Low to read from i_regAddress
 	.i_i2cAddress(7'h60),  // 7 bit I2C address of slave
 	.i_regAddress(8'h12),  // Register address within the slave
+	.i_bytesToRx(2'd2),
 	.i_txData(8'h34),  // Data to write to the register, ignored if i_writeEnable is low when i_begin is asserted
 	.i2c_scl(scl),  // SCL line, pass directly to IO
 	.i2c_sda(sda),  // SDA line, pass directly to IO

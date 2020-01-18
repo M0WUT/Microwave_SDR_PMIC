@@ -80,29 +80,61 @@ uart_tx #(
 
 // I2C Handler
 reg r_i2cBegin = 0;
-reg[6:0] r_i2cAddress = 7'h34;
+reg[7:0] r_i2cRegAddress = 0;
+reg [7:0] r_i2cTxData = 0;
 wire[7:0] w_i2cRxData;
 wire w_i2cDone;
 reg r_i2cWriteEnable = 0;
 
 i2c_handler i2c_inst1(
 	.i_clk(clk),  // Input clock 
-	.i_begin(1'b1),  // Logic high will begin I2C transaction
-	.i_writeEnable(1'b0),  // High to write i_txData to i_regAddress, Low to read from i_regAddress
+	.i_begin(r_i2cBegin),  // Logic high will begin I2C transaction
+	.i_writeEnable(r_i2cWriteEnable),  // High to write i_txData to i_regAddress, Low to read from i_regAddress
 	.i_i2cAddress(7'h70),  // 7 bit I2C address of slave
-	.i_regAddress(8'h0A),  // Register address within the slave
-	.i_txData(8'h34),  // Data to write to the register, ignored if i_writeEnable is low when i_begin is asserted
+	.i_regAddress(r_i2cRegAddress),  // Register address within the slave
+	.i_txData(8'h03),  // Data to write to the register, ignored if i_writeEnable is low when i_begin is asserted
+	.i_bytesToTx(1'b1),
+	.i_bytesToRx(2'd2),
 	.i2c_scl(i2c_scl),  // SCL line, pass directly to IO
 	.i2c_sda(i2c_sda),  // SDA line, pass directly to IO
 	.o_done(w_i2cDone)  // Asserted high for 1 cycle of i_clk to indicate the I2C transaction is complete
 );
 
-//DEBUG
-reg [10:0] r_counter = 0;
-always @(posedge w_i2cDone) begin
-	r_i2cWriteEnable = ~r_i2cWriteEnable;
-end
+reg[1:0] r_state = 0;
+reg[15:0] r_delay = 0;
 
+always @(negedge clk) begin
+	case(r_state)
+		0: begin
+		  	r_i2cBegin <= 1'b1;
+			r_i2cWriteEnable <= 1'b1;
+			r_i2cRegAddress <= 8'h0A;
+			r_i2cTxData <= 8'h03;  // Take voltage reading
+			r_delay <= 12000;
+			r_state <= (w_i2cDone ? 1 : 0);
+			
+		end
+		
+		1: begin
+			r_i2cBegin <= 1'b0;
+			r_i2cWriteEnable <= 1'b0;
+			if(r_delay == 0) begin
+				r_state <= 2;
+			end else begin
+				r_delay <= r_delay - 1;
+				r_state <= 1;
+			end
+		end
+
+		2: begin
+		  	r_i2cBegin <= 1;
+			r_i2cWriteEnable <= 0;
+			r_i2cRegAddress <= 2;  // Read voltage register
+			r_state <= (w_i2cDone ? 0 : 2);
+		end
+
+	endcase
+end
 
 /////////////
 // Stage 1 //
