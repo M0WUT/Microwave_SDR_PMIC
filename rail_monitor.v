@@ -14,9 +14,9 @@ module rail_monitor #(
 reg r_voltageFault = 0;
 reg r_currentFault = 0;
 reg r_enabled = 0; 
-reg [22:0] r_startupCounter = 0;
-reg [22:0] r_voltageErrorCounter = 0;
-reg [22:0] r_currentErrorCounter = 0;
+reg [11:0] r_startupCounter = 0;
+reg [11:0] r_voltageErrorCounter = 0;
+reg [11:0] r_currentErrorCounter = 0;
 wire w_railGood;
 
 assign w_railGood = ~r_voltageFault && ~r_currentFault;
@@ -34,7 +34,8 @@ always @(posedge i_clk) begin
 	end else begin
 		r_startupCounter <= 0;
 	end
-	if(r_startupCounter > STARTUP_DELAY) begin
+
+	if(r_startupCounter > STARTUP_DELAY) begin
 		r_enabled <= 1'b1;
 	end else begin
 		r_enabled <= r_enabled;

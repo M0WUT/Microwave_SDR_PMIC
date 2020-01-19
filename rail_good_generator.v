@@ -5,8 +5,6 @@ module rail_good_generator #(
     input i_rail1, 
     input i_rail2,
     input i_rail3,
-    input i_rail4,
-    input i_rail5,
     output o_allGood
 );
 
@@ -14,7 +12,7 @@ reg [31:0] r_counter = 0;
 reg r_delayComplete = 0;
 
 wire w_allGood;
-assign w_allGood = (i_rail1 && i_rail2 && i_rail3 && i_rail4 && i_rail5);
+assign w_allGood = (i_rail1 && i_rail2 && i_rail3);
 assign o_allGood = w_allGood && r_delayComplete;
 
 always @(posedge i_clk)begin
