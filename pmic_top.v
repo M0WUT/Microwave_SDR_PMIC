@@ -164,7 +164,7 @@ rail_monitor #(
     ) monitor_12V (
 	.i_clk(slow_clock),
 	.i_voltageGood(i_12V_voltageGood),
-    .i_currentGood(i_12V_currentGood),
+    .i_currentGood(1'b1),  // Super dodgy fix
     .o_railGood(o_12V_railGood),
     .o_voltageFault(o_12V_voltageFault),
     .o_currentFault(o_12V_currentFault)
